@@ -12,18 +12,19 @@ namespace ConsoleApp2
         {
             int boardWid = 3, boardHei = 3;
             char[] symbols = { 'x', 'o' };
-            Game MyGame = new Game(boardWid, boardHei, symbols);
+            bool[] rules = { true, false };
+            Game MyGame = new Game(boardWid, boardHei, symbols, rules);
             MyGame.Play();
         }
         class Game
         {
             Board Board;
             List<Player> Players;
-            public Game(int boardWid, int boardHei, char[] symbols)
+            public Game(int boardWid, int boardHei, char[] symbols, bool[] rules)
             {
                 Board = new Board(boardWid, boardHei);
                 Players = new List<Player>();
-                foreach (char symbol in symbols) Players.Add(new Player(symbol));
+                for (int i = 0; i < symbols.Length; i++) Players.Add(new Player(symbols[i], rules[i]));
             }
             public void Play()
             {
@@ -51,43 +52,63 @@ namespace ConsoleApp2
                     for (int j = 0; j < hei; j++)
                         Cells[i, j] = new Cell(i, j);
             }
-
             public bool EndGame;
-            public bool CheckWin()
+            public bool CheckWin(List<Cell> cells) => CheckStraight(cells, true) || CheckStraight(cells, false) || 
+                CheckDiagonal(cells, true) || CheckDiagonal(cells, false);
+            bool CheckDiagonal(List<Cell> cells, bool main)
             {
-
-                return CheckLine();
+                int limit = Param.Wid;
+                return CheckLine(cells, limit, main ? CheckRuleType.DiagMain : CheckRuleType.DiagInverse, sum: main ? 0 : limit - 1);
             }
-            bool CheckLine()
+            bool CheckStraight(List<Cell> cells, bool horz)
             {
-                foreach (Cell curCell in Cells)
+                bool lineExist = false;
+                int limit = horz ? Param.Hei : Param.Wid;
+                for (int i = 0; i < limit; i++)
                 {
-                    if (curCell.X == 0) { }
-
-                    for (int i = 0; i < Param.Wid; i++)
-                    {
-                        bool horzLine = false;
-                        for (int j = 0; j < Param.Hei; j++)
-                        {
-
-                        }
-                    }
+                    lineExist = CheckLine(cells, limit, horz ? CheckRuleType.Horz : CheckRuleType.Vert, line: i);
+                    if (lineExist) break;
                 }
-                return false;
+                return lineExist;
             }
-            public Cell GetEmptyCell()
+            bool CheckLine(List<Cell> cells, int limit, CheckRuleType ruleType, int line = 0, int sum = 0)
+            {
+                int cnt = 0;
+                foreach (Cell curCell in cells) if (CheckRule(curCell, ruleType, line, sum)) cnt++;
+                return cnt == limit;
+            }
+            enum CheckRuleType {Horz, Vert, DiagMain, DiagInverse}
+            bool CheckRule(Cell cell, CheckRuleType ruleType, int line = 0, int sum = 0)
+            {
+                bool check = false;
+                switch (ruleType)
+                {
+                    case CheckRuleType.Horz:
+                        check = cell.X == line;
+                        break;
+                    case CheckRuleType.Vert:
+                        check = cell.Y == line;
+                        break;
+                    case CheckRuleType.DiagMain:
+                        check = cell.X == cell.Y;
+                        break;
+                    case CheckRuleType.DiagInverse:
+                        check = cell.X + cell.Y == sum;
+                        break;
+                    default:
+                        break;
+                }
+                return check;
+            }
+            public List<Cell> GetCells(char symbol = '\0', bool diagonal = false)
             {
                 List<Cell> cells = new List<Cell>();
-                foreach (Cell curCell in Cells)
-                    if (!curCell.Filled) cells.Add(curCell);
-                Cell empCell = null;
-                if (cells.Count > 0)
-                {
-                    empCell = cells[PseudoRandom(cells.Count)];
-                    if (cells.Count == 1) empCell.Last = true;
-                }
-                return empCell;
+                foreach (Cell curCell in Cells) if (curCell.Symbol == symbol && (!diagonal ||
+                        CheckRule(curCell, CheckRuleType.DiagMain) ||
+                        CheckRule(curCell, CheckRuleType.DiagInverse, sum: Param.Wid - 1))) cells.Add(curCell);
+                return cells;
             }
+            public Cell GetRandomCell(List<Cell> cells) => cells.Count > 0 ? cells[PseudoRandom(cells.Count)] : null;
             public void WriteBoard()
             {
                 foreach (Cell curCell in Cells)
@@ -98,7 +119,7 @@ namespace ConsoleApp2
         {
             public int X, Y;
             public char Symbol;
-            public bool Filled, Last;
+            public bool Filled;
             public Cell(int x, int y) { X = x; Y = y; }
             public void Fill(char symbol)
             {
@@ -111,30 +132,33 @@ namespace ConsoleApp2
             public void Make(Board board, List<Player> players)
             {
                 PlayerRule curRule = new PlayerRule();
-                Cell emptyCell = curRule.GetCell(board);
-                board.Cells[emptyCell.X, emptyCell.Y].Fill(players[board.CurPlayer].Symbol);
-                board.WriteBoard();
-                Console.Write("\n");
-                board.EndGame = board.CheckWin() || emptyCell.Last;
+                Cell emptyCell = curRule.GetCell(board, players[board.CurPlayer].Diagonal);
+                bool nullCell = emptyCell == null;
+                bool win = false;
+                char curSymbol = players[board.CurPlayer].Symbol;
+                if (!nullCell)
+                {
+                    board.Cells[emptyCell.X, emptyCell.Y].Fill(curSymbol);
+                    board.WriteBoard();
+                    Console.Write("\n");
+                    win = board.CheckWin(board.GetCells(symbol: curSymbol));
+                }
+                board.EndGame = win || nullCell;
+                if (board.EndGame) Console.Write(win ? curSymbol + " win" : "draw");
                 board.PlayerChange(players.Count);
             }
         }
         class Player
         {
             public char Symbol;
-            public Player(char symbol) { Symbol = symbol; }
-            public PlayerRule Rule;
+            public Player(char symbol, bool diagonal) { Symbol = symbol; Diagonal = diagonal; }
+            public bool Diagonal;
         }
         class PlayerRule
         {
             public PlayerRule() { }
-            public int Lenght;
-            public bool Odd, FirstTurn;
-            public void Diag() {}
-            public void Random(){}
-            public Cell GetCell(Board board) => board.GetEmptyCell();
+            public Cell GetCell(Board board, bool diagonal) => board.GetRandomCell(board.GetCells(diagonal: diagonal));
         }
-        class EndGameRule { }
         class BoardParam
         {
             public int Wid, Hei;
@@ -160,30 +184,5 @@ namespace ConsoleApp2
             Console.WriteLine("x..\n...\n...\n\nxo.\n...\n...\n\nxo.\n.x.\n...\n\nxo.\n.x.\n..o\n\n" +
                 "xox\n.x.\n..o\n\nxox\n.x.\n.oo\n\nxox\n.x.\nxoo\n\n");
         }
-
-        static void PandaMarry()
-        {
-            Panda panda1 = new Panda("Ленивый");
-            Panda panda2 = new Panda("Лариска");
-            panda1.Marry(panda2); //женим их
-            Console.WriteLine("у панды {0} партнер {1}", panda1.Name, panda1.Mate.Name);
-            Console.WriteLine("у панды {0} партнер {1}", panda2.Name, panda2.Mate.Name);
-        }
     }
-
-    public class Panda
-    {
-        public string Name { get; set; }
-        public Panda(string _name)
-        {
-            Name = _name;
-        }
-                public Panda Mate;
-        public void Marry(Panda partner)
-        {
-            Mate = partner; // для этого экземпляра запоминаем в поле Mate другой экземпляр (партнер). Далее с ним можно работать
-            partner.Mate = this; // в тоже время и в экземпляре партнер в ЕГО поле Mate запоминаем этот (this)  экземпляр
-        }
-    }
-
 }
